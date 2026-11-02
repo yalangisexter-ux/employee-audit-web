@@ -2,6 +2,12 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from html.parser import HTMLParser
+import ipaddress
+import re
+import socket
+from urllib.parse import urlparse
+from urllib.request import Request, urlopen
 from pathlib import Path
 from typing import Any, Optional
 
@@ -493,6 +499,81 @@ def activities_update(item_id: int, body: ActivityIn, user=Depends(require_user)
 @app.delete("/api/business/activities/{item_id}")
 def activities_delete(item_id: int, user=Depends(require_user)):
     return _delete("activities", item_id)
+
+
+class ScrapeIn(BaseModel):
+    url: str = Field(min_length=8, max_length=2048)
+
+
+class _PageMetadata(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.title = False
+        self.title_parts: list[str] = []
+        self.meta: dict[str, str] = {}
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag.lower() == "meta":
+            key = (attrs.get("property") or attrs.get("name") or "").lower()
+            if key in {"og:title", "og:description", "description"} and attrs.get("content"):
+                self.meta[key] = attrs["content"][:1000]
+        if tag.lower() == "title":
+            self.title = True
+
+    def handle_endtag(self, tag):
+        if tag.lower() == "title":
+            self.title = False
+
+    def handle_data(self, data):
+        if self.title and len("".join(self.title_parts)) < 500:
+            self.title_parts.append(data.strip())
+
+
+@app.post("/api/store/scrape")
+def scrape_public_page(body: ScrapeIn, user=Depends(require_user)):
+    """Fetch metadata from one explicitly supplied public HTTP(S) page; never crawl networks."""
+    parsed = urlparse(body.url.strip())
+    if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+        raise HTTPException(400, "Only public HTTPS URLs are accepted.")
+    host = parsed.hostname.rstrip(".").lower()
+    if host in {"localhost", "localhost.localdomain"}:
+        raise HTTPException(400, "Private and local hosts are not allowed.")
+    try:
+        addresses = socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)
+        if not addresses:
+            raise ValueError("No address")
+        for item in addresses:
+            ip = ipaddress.ip_address(item[4][0])
+            if not ip.is_global:
+                raise HTTPException(400, "Private and non-public network addresses are blocked.")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(400, "Unable to resolve a public host.") from exc
+    request = Request(body.url.strip(), headers={"User-Agent": "EmployeeAuditWeb-LeadCapture/1.0"})
+    try:
+        with urlopen(request, timeout=8) as response:
+            final = urlparse(response.geturl())
+            if final.scheme != "https" or final.hostname != host:
+                raise HTTPException(400, "Redirects to another host are not allowed.")
+            if "text/html" not in response.headers.get("Content-Type", "").lower():
+                raise HTTPException(415, "The source does not return HTML.")
+            raw = response.read(1_000_001)
+            if len(raw) > 1_000_000:
+                raise HTTPException(413, "Page is larger than the 1 MB capture limit.")
+            html = raw.decode(response.headers.get_content_charset() or "utf-8", errors="replace")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(502, "Unable to fetch this public page. Check its URL or access restrictions.") from exc
+    parser = _PageMetadata()
+    parser.feed(html[:1_000_000])
+    title = " ".join(" ".join(parser.title_parts).split())[:250] or host
+    description = parser.meta.get("og:description") or parser.meta.get("description", "")
+    emails = sorted(set(re.findall(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}", html, re.I)))[:10]
+    phones = sorted(set(re.findall(r"(?<!\\w)(?:\\+?\\d[\\d .()/-]{7,}\\d)(?!\\w)", html)))[:10]
+    return {"ok": True, "source_url": body.url, "domain": host, "business_name": parser.meta.get("og:title") or title, "description": description, "emails": emails, "phones": phones, "captured_at": datetime.utcnow().isoformat() + "Z", "review_required": True}
 
 
 @app.get("/api/customers")

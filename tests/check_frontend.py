@@ -75,7 +75,9 @@ def main():
         raise SystemExit("Legacy sample login credentials must not appear in the web UI")
     if "createFirstAdmin" not in app_js or "/api/auth/status" not in app_js:
         raise SystemExit("Fresh-install administrator setup is not wired to the frontend")
-    print("Frontend assets, wallpaper artwork, fresh-install setup, and JavaScript syntax validated.")
+    if "/api/store/scrape" not in app_js or "Review captured lead before saving" not in app_js:
+        raise SystemExit("Store Directory is not wired to reviewed server-side source capture")
+    print("Frontend assets, wallpaper artwork, first-run setup, source capture and JavaScript syntax validated.")
 
 
 if __name__ == "__main__":
