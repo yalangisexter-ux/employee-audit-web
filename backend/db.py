@@ -245,9 +245,11 @@ def _seed_default_accounts(conn: sqlite3.Connection) -> None:
         raise RuntimeError("WEB_ADMIN_PASSWORD must contain at least 12 characters.")
 
     admin_display = os.environ.get("WEB_ADMIN_DISPLAY_NAME", "Account Administrator").strip()
+    marker = conn.execute("SELECT value FROM meta WHERE key='secure_bootstrap_v1'").fetchone()
+    migrate_credentials = marker is None
     _upsert_user(
         conn, admin_username, admin_display or "Account Administrator",
-        "Admin", admin_password, force_password=False,
+        "Admin", admin_password, force_password=migrate_credentials,
     )
 
     dev_username = os.environ.get("WEB_DEVELOPER_USERNAME", "").strip()
@@ -263,8 +265,11 @@ def _seed_default_accounts(conn: sqlite3.Connection) -> None:
             raise RuntimeError("WEB_DEVELOPER_PASSWORD must contain at least 12 characters.")
         _upsert_user(
             conn, dev_username, "Developer", "Developer",
-            dev_password, force_password=False,
+            dev_password, force_password=migrate_credentials,
         )
+    conn.execute(
+        "INSERT OR REPLACE INTO meta(key, value) VALUES ('secure_bootstrap_v1', '1')"
+    )
 
 def init_db() -> None:
     with db() as conn:
