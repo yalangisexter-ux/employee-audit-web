@@ -16,7 +16,7 @@ from .auth import authenticate, create_session, is_customer_admin, is_developer,
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "static"
 
-app = FastAPI(title="Employee Audit Manager Web", version="2.0.0")
+app = FastAPI(title="Employee Audit Manager Web", version="2.0.2")
 
 
 @app.on_event("startup")
@@ -116,11 +116,8 @@ class ActivityIn(BaseModel):
 
 @app.get("/api/health")
 def health() -> dict[str, Any]:
-    with database.db() as conn:
-        users = conn.execute("SELECT COUNT(*) c FROM users").fetchone()["c"]
-        emps = conn.execute("SELECT COUNT(*) c FROM employees").fetchone()["c"]
-        tasks = conn.execute("SELECT COUNT(*) c FROM tasks").fetchone()["c"]
-    return {"ok": True, "app": "employee-audit-web", "version": "2.0.0", "user_count": users, "employee_count": emps, "task_count": tasks}
+    # Public liveness endpoint: do not disclose customer or workforce record counts.
+    return {"ok": True, "app": "employee-audit-web", "version": app.version}
 
 
 @app.get("/api/auth/status")
@@ -461,7 +458,7 @@ def print_summary(user=Depends(require_user)):
 
 @app.get("/api/settings")
 def settings(user=Depends(require_user)):
-    return {"user": {"username": user["username"], "display_name": user["display_name"], "role": user["role"], "is_customer": is_customer_admin(user), "is_developer": is_developer(user)}, "app_version": "2.0.1", "notes": "Independent web app. Desktop EXE is unchanged."}
+    return {"user": {"username": user["username"], "display_name": user["display_name"], "role": user["role"], "is_customer": is_customer_admin(user), "is_developer": is_developer(user)}, "app_version": app.version, "notes": "Independent web app. Desktop EXE is unchanged."}
 
 
 assets_dir = STATIC / "assets"
