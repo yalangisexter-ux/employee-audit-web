@@ -59,10 +59,26 @@ function logout(){state.token='';state.user=null;localStorage.removeItem('eaw_to
 async function loadTab(){const t=state.tab;try{if(t==='dashboard')state.data.dashboard=await api('/api/dashboard');if(t==='employees')state.data.employees=await api('/api/employees');if(t==='tasks')state.data.tasks=await api('/api/tasks');if(t==='attendance')state.data.attendance=await api('/api/attendance');if(t==='business'){state.data.products=await api('/api/business/products');state.data.services=await api('/api/business/services');state.data.orders=await api('/api/business/orders');state.data.members=await api('/api/business/members');state.data.activities=await api('/api/business/activities');}if(t==='customers')state.data.customers=await api('/api/customers');if(t==='print')state.data.print=await api('/api/print/summary');if(t==='settings')state.data.settings=await api('/api/settings');}catch(e){state.error=e.message;}render();}
 async function setTab(tab){state.tab=tab;state.error='';document.querySelector('.sidebar')?.classList.remove('open');document.querySelector('.overlay')?.classList.remove('show');render();await loadTab();}
 async function createRow(path,body){await api(path,{method:'POST',body:JSON.stringify(body)});notice('Saved');await loadTab();}
-async function removeRow(path){if(!confirm('Delete this record?'))return;await api(path,{method:'DELETE'});notice('Deleted');await loadTab();}
+async function removeRow(path){if(!confirm('Delete this record?'))return;try{await api(path,{method:'DELETE'});notice('Deleted');await loadTab();}catch(err){alert(err.message);}}
+async function editRow(base,id){
+ const key=({'/api/employees':'employees','/api/tasks':'tasks','/api/attendance':'attendance','/api/business/products':'products','/api/business/services':'services','/api/business/orders':'orders','/api/business/members':'members','/api/business/activities':'activities','/api/customers':'customers'})[base];
+ const row=(state.data[key]||[]).find(x=>Number(x.id)===Number(id));if(!row)return alert('Record not found. Refresh and try again.');
+ const updated={...row};delete updated.id;delete updated.created_at;delete updated.updated_at;
+ for(const field of Object.keys(updated)){
+   const value=prompt('Edit '+field.replace(/_/g,' '),updated[field]??'');
+   if(value===null)return;
+   if(['stock','price','duration_min','quantity','amount','employee_id'].includes(field)){
+     if(value.trim()==='')updated[field]=field==='employee_id'?null:0;
+     else if(!Number.isFinite(Number(value)))return alert(field+' must be a valid number');
+     else updated[field]=Number(value);
+   }else updated[field]=value;
+ }
+ try{await api(base+'/'+id,{method:'PUT',body:JSON.stringify(updated)});notice('Updated');await loadTab();}
+ catch(err){alert('Update failed: '+err.message);}
+}
 function kpi(n,l){return `<div class="kpi"><div class="n">${n??0}</div><div class="l">${l}</div></div>`;}
 function esc(v){return String(v).replace(/[&<>"']/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));}
-function table(rows,cols,delPath){if(!rows||!rows.length)return `<div class="empty">No records yet. Add the first one above.</div>`;return `<div style="overflow:auto"><table><thead><tr>${cols.map(c=>`<th>${c[1]}</th>`).join('')}${delPath?'<th></th>':''}</tr></thead><tbody>${rows.map(r=>`<tr>${cols.map(c=>`<td>${esc(r[c[0]]??'—')}</td>`).join('')}${delPath?`<td><button class="btn ghost" style="padding:.25rem .5rem;font-size:.75rem" onclick="removeRow('${delPath}/'+${r.id})">Delete</button></td>`:''}</tr>`).join('')}</tbody></table></div>`;}
+function table(rows,cols,delPath){if(!rows||!rows.length)return `<div class="empty">No records yet. Add the first one above.</div>`;return `<div style="overflow:auto"><table><thead><tr>${cols.map(c=>`<th>${c[1]}</th>`).join('')}${delPath?'<th>Actions</th>':''}</tr></thead><tbody>${rows.map(r=>`<tr>${cols.map(c=>`<td>${esc(r[c[0]]??'—')}</td>`).join('')}${delPath?`<td><button class="btn ghost" style="padding:.25rem .5rem;font-size:.75rem" onclick="editRow('${delPath}',${r.id})">Edit</button> <button class="btn danger" style="padding:.25rem .5rem;font-size:.75rem" onclick="removeRow('${delPath}/'+${r.id})">Delete</button></td>`:''}</tr>`).join('')}</tbody></table></div>`;}
 function formFields(fields,submitLabel,onSubmitName){return `<form onsubmit="${onSubmitName}(event)" class="row">${fields.map(f=>{if(f.type==='select')return `<label>${f.label}<select name="${f.name}">${f.options.map(o=>`<option value="${o[0]}">${o[1]}</option>`).join('')}</select></label>`;return `<label>${f.label}<input name="${f.name}" ${f.required?'required':''} value="${f.value||''}" placeholder="${f.ph||''}" type="${f.type||'text'}"/></label>`;}).join('')}<button class="btn" type="submit">${submitLabel}</button></form>`;}
 async function submitEmployee(e){e.preventDefault();const fd=new FormData(e.target);await createRow('/api/employees',Object.fromEntries(fd.entries()));e.target.reset();}
 async function submitTask(e){e.preventDefault();const fd=new FormData(e.target);await createRow('/api/tasks',Object.fromEntries(fd.entries()));e.target.reset();}
