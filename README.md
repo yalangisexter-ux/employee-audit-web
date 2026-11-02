@@ -28,11 +28,11 @@ For a hosted instance, set these environment variables in the hosting provider's
 | `WEB_BOOTSTRAP_USERS` | Yes | Set to `true` to provision the administrator from secrets |
 | `WEB_ADMIN_USERNAME` | Yes | Your chosen case-sensitive admin username |
 | `WEB_ADMIN_PASSWORD` | Yes | Unique password, minimum 12 characters |
-| `WEB_ADMIN_DISPLAY_NAME` | No | Display name |
+| `WEB_ADMIN_DISPLAY_NAME` | No | Display name |\n| `WEB_SESSION_SECRET` | Strongly recommended | Stable random secret (at least 32 characters) used to sign restart-safe login sessions |
 | `WEB_DEVELOPER_USERNAME` | No | Optional separate developer username |
 | `WEB_DEVELOPER_PASSWORD` | No | Optional separate developer password, minimum 12 characters |
 
-If developer credentials are configured, set both developer variables. Bootstrap credentials are applied to the named accounts at startup, allowing an operator to rotate them by changing the provider secrets. Never commit secret values.
+If developer credentials are configured, set both developer variables. Bootstrap credentials are applied to the named accounts at startup, allowing an operator to rotate them by changing the provider secrets. Never commit secret values. Generate a stable session secret once with `python -c 'import secrets; print(secrets.token_urlsafe(48))'` and save it as `WEB_SESSION_SECRET` in Light Cloud environment secrets. Do not regenerate it during normal deploys. If the host uses ephemeral storage, this secret must be configured.
 
 ## Local run
 
