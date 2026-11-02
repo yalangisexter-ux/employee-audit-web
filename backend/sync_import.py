@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+import sqlite3
 from typing import Any
 
 from fastapi import APIRouter, Depends
@@ -34,7 +35,7 @@ def sync_import(body: SyncImportIn, user=Depends(require_user)):
             backup_dir = Path(database.DATA_DIR) / "backups"
             backup_dir.mkdir(parents=True, exist_ok=True)
             backup_path = backup_dir / ("pre-sync-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ") + ".db")
-            target = database.sqlite3.connect(str(backup_path))
+            target = sqlite3.connect(str(backup_path))
             try:
                 conn.backup(target)
             finally:
