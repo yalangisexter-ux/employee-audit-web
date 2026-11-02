@@ -31,6 +31,32 @@ class LoginIn(BaseModel):
     password: str
 
 
+class FirstAdminSetupIn(BaseModel):
+    username: str = Field(min_length=3, max_length=64)
+    display_name: str = Field(min_length=1, max_length=120)
+    password: str = Field(min_length=12, max_length=256)
+
+
+@app.post("/api/auth/setup")
+def first_admin_setup(body: FirstAdminSetupIn) -> dict[str, Any]:
+    """Create the first administrator in this independent web database exactly once."""
+    username = body.username.strip()
+    if not username or any(ch.isspace() for ch in username):
+        raise HTTPException(status_code=400, detail="Username must not contain spaces.")
+    with database.db() as conn:
+        count = conn.execute("SELECT COUNT(*) AS c FROM users").fetchone()["c"]
+        if count:
+            raise HTTPException(status_code=409, detail="Initial setup is already complete. Sign in instead.")
+        cur = conn.execute(
+            "INSERT INTO users (username, display_name, role, password_hash, is_active, created_at) VALUES (?,?,?,?,1,?)",
+            (username, body.display_name.strip() or username, "Admin", database.hash_password(body.password), datetime.utcnow().isoformat()),
+        )
+        user_id = int(cur.lastrowid)
+    user = {"id": user_id, "username": username, "display_name": body.display_name.strip() or username, "role": "Admin"}
+    token = create_session(user_id)
+    return {"ok": True, "token": token, "user": {"id": user_id, "username": username, "display_name": user["display_name"], "role": "Admin", "is_customer": True, "is_developer": False}}
+
+
 class PasswordChangeIn(BaseModel):
     current_password: str = Field(min_length=1)
     new_password: str = Field(min_length=12, max_length=256)
@@ -134,7 +160,7 @@ def health() -> dict[str, Any]:
 def auth_status() -> dict[str, Any]:
     with database.db() as conn:
         users = conn.execute("SELECT COUNT(*) c FROM users").fetchone()["c"]
-    return {"setup_required": users == 0, "user_count": users}
+    return {"setup_required": users == 0, "user_count": users, "database": "independent-web"}
 
 
 @app.post("/api/auth/login")
