@@ -36,6 +36,10 @@ class PasswordChangeIn(BaseModel):
     new_password: str = Field(min_length=12, max_length=256)
 
 
+class AdminPasswordResetIn(BaseModel):
+    new_password: str = Field(min_length=12, max_length=256)
+
+
 class EmployeeIn(BaseModel):
     name: str
     role: str = ""
@@ -161,6 +165,33 @@ def change_password(body: PasswordChangeIn, user=Depends(require_user)) -> dict[
 @app.get("/api/auth/me")
 def me(user=Depends(require_user)) -> dict[str, Any]:
     return {"id": user["id"], "username": user["username"], "display_name": user["display_name"], "role": user["role"], "is_customer": is_customer_admin(user), "is_developer": is_developer(user)}
+
+
+@app.get("/api/users")
+def users_list(user=Depends(require_user)):
+    if not (is_customer_admin(user) or is_developer(user)):
+        raise HTTPException(status_code=403, detail="Administrator permission required")
+    with database.db() as conn:
+        rows = conn.execute(
+            "SELECT id, username, display_name, role, is_active, created_at FROM users ORDER BY username"
+        ).fetchall()
+    return database.rows_to_list(rows)
+
+
+@app.post("/api/users/{user_id}/reset-password")
+def admin_reset_password(user_id: int, body: AdminPasswordResetIn, user=Depends(require_user)):
+    if not (is_customer_admin(user) or is_developer(user)):
+        raise HTTPException(status_code=403, detail="Administrator permission required")
+    with database.db() as conn:
+        target = conn.execute("SELECT id FROM users WHERE id=?", (user_id,)).fetchone()
+        if not target:
+            raise HTTPException(status_code=404, detail="User not found")
+        conn.execute(
+            "UPDATE users SET password_hash=?, password_hash_alt=NULL WHERE id=?",
+            (database.hash_password(body.new_password), user_id),
+        )
+        conn.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
+    return {"ok": True, "message": "Password reset. The user must sign in with the new password."}
 
 
 @app.get("/api/dashboard")
@@ -485,7 +516,10 @@ def print_summary(user=Depends(require_user)):
 
 @app.get("/api/settings")
 def settings(user=Depends(require_user)):
-    return {"user": {"username": user["username"], "display_name": user["display_name"], "role": user["role"], "is_customer": is_customer_admin(user), "is_developer": is_developer(user)}, "app_version": app.version, "notes": "Independent web app. Desktop EXE is unchanged."}
+    result = {"user": {"id": user["id"], "username": user["username"], "display_name": user["display_name"], "role": user["role"], "is_customer": is_customer_admin(user), "is_developer": is_developer(user)}, "app_version": app.version, "notes": "Independent web app. Desktop EXE is unchanged."}
+    if is_customer_admin(user) or is_developer(user):
+        result["users"] = users_list(user)
+    return result
 
 
 @app.get("/api/backup/database")
