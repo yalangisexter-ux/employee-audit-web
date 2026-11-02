@@ -16,7 +16,6 @@ async function pullCloudSync(){
   const statusEl=document.getElementById("syncStatus");
   if(!secret||!installId){alert("Enter Installation ID and Sync Secret from EXE Master Customer Mode.");return;}
   localStorage.setItem("eaw_install_id",installId);
-  localStorage.setItem("eaw_sync_secret",secret);
   if(statusEl)statusEl.textContent="Registering device...";
   try{
     let deviceId=localStorage.getItem("eaw_device_id")||crypto.randomUUID().replace(/-/g,"");
