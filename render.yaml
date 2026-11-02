@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: employee-audit-web
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.0"
+      - key: AUDIT_DATA_DIR
+        value: /var/data
+      - key: WEB_BOOTSTRAP_USERS
+        value: "1"
+    disk:
+      name: audit-data
+      mountPath: /var/data
+      sizeGB: 1
