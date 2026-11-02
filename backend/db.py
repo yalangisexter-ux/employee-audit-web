@@ -290,11 +290,10 @@ def _seed_default_accounts(conn: sqlite3.Connection) -> None:
 def init_db() -> None:
     with db() as conn:
         conn.executescript(SCHEMA)
-        # Provision only when explicitly enabled; missing secrets fail startup.
-        bootstrap_flag = os.environ.get("WEB_BOOTSTRAP_USERS", "false").strip().lower()
-        if bootstrap_flag in ("1", "true", "yes", "on"):
-            _seed_default_accounts(conn)
-        conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES ('schema_version', '3')")
+        # The web application owns a clean, independent account database.
+        # Accounts are created through the one-time first-admin setup screen;
+        # never import, migrate, seed, or rewrite desktop/legacy credentials.
+        conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES ('schema_version', '4')")
 
 
 def row_to_dict(row: sqlite3.Row | None) -> dict[str, Any] | None:
