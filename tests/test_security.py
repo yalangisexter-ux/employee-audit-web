@@ -79,6 +79,36 @@ class SecurityBootstrapTests(unittest.TestCase):
                 user,
             )
 
+    def test_session_survives_database_session_table_cleanup(self):
+        from backend import auth
+
+        os.environ["WEB_BOOTSTRAP_USERS"] = "true"
+        os.environ["WEB_ADMIN_USERNAME"] = "test-admin"
+        os.environ["WEB_ADMIN_PASSWORD"] = "Initial-Password-123"
+        os.environ["WEB_SESSION_SECRET"] = "test-session-secret-that-is-at-least-32-characters"
+        db.init_db()
+        user = auth.authenticate("test-admin", "Initial-Password-123")
+        token = auth.create_session(int(user["id"]))
+
+        # Stateless signed sessions remain valid even when old server-side
+        # session rows are absent after a process/container restart.
+        with db.db() as conn:
+            conn.execute("DELETE FROM sessions")
+        self.assertIsNotNone(auth.session_user(token))
+
+    def test_bootstrap_does_not_rotate_password_hash_on_restart(self):
+        from backend import auth
+
+        os.environ["WEB_BOOTSTRAP_USERS"] = "true"
+        os.environ["WEB_ADMIN_USERNAME"] = "test-admin"
+        os.environ["WEB_ADMIN_PASSWORD"] = "Initial-Password-123"
+        os.environ["WEB_SESSION_SECRET"] = "test-session-secret-that-is-at-least-32-characters"
+        db.init_db()
+        user_before = auth.authenticate("test-admin", "Initial-Password-123")
+        token = auth.create_session(int(user_before["id"]))
+        db.init_db()
+        self.assertIsNotNone(auth.session_user(token))
+
     def test_password_hash_verification(self):
         hashed = db.hash_password("a-unique-long-password")
         self.assertTrue(db.verify_password("a-unique-long-password", hashed))
