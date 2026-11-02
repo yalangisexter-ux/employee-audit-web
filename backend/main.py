@@ -260,6 +260,23 @@ def attendance_create(body: AttendanceIn, user=Depends(require_user)):
     return _get("attendance", int(aid))
 
 
+@app.put("/api/attendance/{item_id}")
+def attendance_update(item_id: int, body: AttendanceIn, user=Depends(require_user)):
+    with database.db() as conn:
+        try:
+            cur = conn.execute(
+                "UPDATE attendance SET employee_id=?, employee_name=?, work_date=?, status=?, check_in=?, check_out=?, notes=? WHERE id=?",
+                (body.employee_id, body.employee_name, body.work_date, body.status, body.check_in, body.check_out, body.notes, item_id),
+            )
+        except Exception as exc:
+            if "UNIQUE constraint failed" in str(exc):
+                raise HTTPException(409, "Attendance already exists for this employee and date") from exc
+            raise
+        if cur.rowcount == 0:
+            raise HTTPException(404, "Not found")
+    return _get("attendance", item_id)
+
+
 @app.delete("/api/attendance/{item_id}")
 def attendance_delete(item_id: int, user=Depends(require_user)):
     return _delete("attendance", item_id)
@@ -276,6 +293,16 @@ def products_create(body: ProductIn, user=Depends(require_user)):
     with database.db() as conn:
         cur = conn.execute("INSERT INTO products (name, sku, category, stock, price, notes, updated_at) VALUES (?,?,?,?,?,?,?)", (body.name, body.sku, body.category, body.stock, body.price, body.notes, now))
         return _get("products", int(cur.lastrowid))
+
+
+@app.put("/api/business/products/{item_id}")
+def products_update(item_id: int, body: ProductIn, user=Depends(require_user)):
+    now = datetime.utcnow().isoformat()
+    with database.db() as conn:
+        cur = conn.execute("UPDATE products SET name=?, sku=?, category=?, stock=?, price=?, notes=?, updated_at=? WHERE id=?", (body.name, body.sku, body.category, body.stock, body.price, body.notes, now, item_id))
+        if cur.rowcount == 0:
+            raise HTTPException(404, "Not found")
+    return _get("products", item_id)
 
 
 @app.delete("/api/business/products/{item_id}")
@@ -296,6 +323,16 @@ def services_create(body: ServiceIn, user=Depends(require_user)):
         return _get("services", int(cur.lastrowid))
 
 
+@app.put("/api/business/services/{item_id}")
+def services_update(item_id: int, body: ServiceIn, user=Depends(require_user)):
+    now = datetime.utcnow().isoformat()
+    with database.db() as conn:
+        cur = conn.execute("UPDATE services SET name=?, category=?, price=?, duration_min=?, notes=?, updated_at=? WHERE id=?", (body.name, body.category, body.price, body.duration_min, body.notes, now, item_id))
+        if cur.rowcount == 0:
+            raise HTTPException(404, "Not found")
+    return _get("services", item_id)
+
+
 @app.delete("/api/business/services/{item_id}")
 def services_delete(item_id: int, user=Depends(require_user)):
     return _delete("services", item_id)
@@ -312,6 +349,15 @@ def orders_create(body: OrderIn, user=Depends(require_user)):
     with database.db() as conn:
         cur = conn.execute("INSERT INTO orders (customer_name, item, quantity, amount, status, order_date, notes, created_at) VALUES (?,?,?,?,?,?,?,?)", (body.customer_name, body.item, body.quantity, body.amount, body.status, body.order_date, body.notes, now))
         return _get("orders", int(cur.lastrowid))
+
+
+@app.put("/api/business/orders/{item_id}")
+def orders_update(item_id: int, body: OrderIn, user=Depends(require_user)):
+    with database.db() as conn:
+        cur = conn.execute("UPDATE orders SET customer_name=?, item=?, quantity=?, amount=?, status=?, order_date=?, notes=? WHERE id=?", (body.customer_name, body.item, body.quantity, body.amount, body.status, body.order_date, body.notes, item_id))
+        if cur.rowcount == 0:
+            raise HTTPException(404, "Not found")
+    return _get("orders", item_id)
 
 
 @app.delete("/api/business/orders/{item_id}")
@@ -332,6 +378,15 @@ def members_create(body: MemberIn, user=Depends(require_user)):
         return _get("members", int(cur.lastrowid))
 
 
+@app.put("/api/business/members/{item_id}")
+def members_update(item_id: int, body: MemberIn, user=Depends(require_user)):
+    with database.db() as conn:
+        cur = conn.execute("UPDATE members SET name=?, phone=?, plan=?, status=?, start_date=?, notes=? WHERE id=?", (body.name, body.phone, body.plan, body.status, body.start_date, body.notes, item_id))
+        if cur.rowcount == 0:
+            raise HTTPException(404, "Not found")
+    return _get("members", item_id)
+
+
 @app.delete("/api/business/members/{item_id}")
 def members_delete(item_id: int, user=Depends(require_user)):
     return _delete("members", item_id)
@@ -348,6 +403,15 @@ def activities_create(body: ActivityIn, user=Depends(require_user)):
     with database.db() as conn:
         cur = conn.execute("INSERT INTO activities (title, category, employee_name, activity_date, notes, created_at) VALUES (?,?,?,?,?,?)", (body.title, body.category, body.employee_name, body.activity_date or date.today().isoformat(), body.notes, now))
         return _get("activities", int(cur.lastrowid))
+
+
+@app.put("/api/business/activities/{item_id}")
+def activities_update(item_id: int, body: ActivityIn, user=Depends(require_user)):
+    with database.db() as conn:
+        cur = conn.execute("UPDATE activities SET title=?, category=?, employee_name=?, activity_date=?, notes=? WHERE id=?", (body.title, body.category, body.employee_name, body.activity_date or date.today().isoformat(), body.notes, item_id))
+        if cur.rowcount == 0:
+            raise HTTPException(404, "Not found")
+    return _get("activities", item_id)
 
 
 @app.delete("/api/business/activities/{item_id}")
