@@ -16,6 +16,13 @@ DB_PATH = DATA_DIR / "employee_audit_web.db"
 
 PBKDF2_ITERATIONS = 310_000
 
+# Predefined production bootstrap accounts (case-sensitive usernames).
+DEFAULT_ADMIN_USERNAME = "Admin"
+DEFAULT_ADMIN_PASSWORD = "Shiva@01"
+DEFAULT_DEV_USERNAME = "admin"
+DEFAULT_DEV_PASSWORD = "kiran123"
+DEFAULT_DEV_PASSWORD_ALT = "Devlopershouse@1996#"
+
 
 def hash_password(password: str, salt: str | None = None) -> str:
     salt = salt or secrets.token_hex(16)
@@ -25,7 +32,9 @@ def hash_password(password: str, salt: str | None = None) -> str:
     return f"pbkdf2_sha256${PBKDF2_ITERATIONS}${salt}${digest}"
 
 
-def verify_password(password: str, stored: str) -> bool:
+def verify_password(password: str, stored: str | None) -> bool:
+    if not stored:
+        return False
     try:
         algo, iters, salt, digest = stored.split("$", 3)
         if algo != "pbkdf2_sha256":
@@ -193,61 +202,82 @@ CREATE TABLE IF NOT EXISTS meta (
 """
 
 
-def _upsert_user(conn: sqlite3.Connection, username: str, display_name: str, role: str, password: str) -> None:
-    if len(password) < 12:
-        raise RuntimeError(f"Password for {username} must be at least 12 characters")
+def _upsert_user(
+    conn: sqlite3.Connection,
+    username: str,
+    display_name: str,
+    role: str,
+    password: str,
+    password_alt: str | None = None,
+    force_password: bool = False,
+) -> None:
     now = datetime.utcnow().isoformat()
     row = conn.execute(
-        "SELECT id FROM users WHERE username = ? COLLATE BINARY", (username,)
+        "SELECT id, password_hash, password_hash_alt FROM users WHERE username = ? COLLATE BINARY",
+        (username,),
     ).fetchone()
     password_hash = hash_password(password)
+    alt_hash = hash_password(password_alt) if password_alt else None
     if row is None:
         conn.execute(
-            "INSERT INTO users (username, display_name, role, password_hash, password_hash_alt, is_active, created_at) VALUES (?,?,?,?,NULL,1,?)",
-            (username, display_name, role, password_hash, now),
+            "INSERT INTO users (username, display_name, role, password_hash, password_hash_alt, is_active, created_at) VALUES (?,?,?,?,?,1,?)",
+            (username, display_name, role, password_hash, alt_hash, now),
         )
-    else:
-        existing = conn.execute(
-            "SELECT password_hash FROM users WHERE id=?", (row["id"],)
-        ).fetchone()
-        # Do not rotate the password hash on every process start. Rehash only
-        # when the configured bootstrap password has actually changed.
-        if existing is not None and verify_password(password, existing["password_hash"]):
-            conn.execute(
-                "UPDATE users SET display_name=?, role=?, password_hash_alt=NULL, is_active=1 WHERE id=?",
-                (display_name, role, row["id"]),
-            )
-        else:
-            conn.execute(
-                "UPDATE users SET display_name=?, role=?, password_hash=?, password_hash_alt=NULL, is_active=1 WHERE id=?",
-                (display_name, role, password_hash, row["id"]),
-            )
+        return
+    if force_password:
+        conn.execute(
+            "UPDATE users SET display_name=?, role=?, password_hash=?, password_hash_alt=?, is_active=1 WHERE id=?",
+            (display_name, role, password_hash, alt_hash, row["id"]),
+        )
+        return
+    # Keep existing hashes unless force requested; still refresh display metadata.
+    conn.execute(
+        "UPDATE users SET display_name=?, role=?, is_active=1 WHERE id=?",
+        (display_name, role, row["id"]),
+    )
+
+
+def _seed_default_accounts(conn: sqlite3.Connection) -> None:
+    """Ensure the known Admin/admin accounts exist for first login."""
+    # Env overrides still supported for hosted secrets.
+    admin_username = os.environ.get("WEB_ADMIN_USERNAME", DEFAULT_ADMIN_USERNAME).strip() or DEFAULT_ADMIN_USERNAME
+    admin_password = os.environ.get("WEB_ADMIN_PASSWORD", DEFAULT_ADMIN_PASSWORD) or DEFAULT_ADMIN_PASSWORD
+    admin_display = os.environ.get("WEB_ADMIN_DISPLAY_NAME", "Taruna (Customer)").strip() or "Taruna (Customer)"
+
+    dev_username = os.environ.get("WEB_DEVELOPER_USERNAME", DEFAULT_DEV_USERNAME).strip() or DEFAULT_DEV_USERNAME
+    dev_password = os.environ.get("WEB_DEVELOPER_PASSWORD", DEFAULT_DEV_PASSWORD) or DEFAULT_DEV_PASSWORD
+    dev_password_alt = os.environ.get("WEB_DEVELOPER_PASSWORD_ALT", DEFAULT_DEV_PASSWORD_ALT) or DEFAULT_DEV_PASSWORD_ALT
+
+    # Always ensure predefined accounts exist. force_password only when no users yet
+    # or WEB_FORCE_BOOTSTRAP_PASSWORDS=1 so restarts do not reset operator changes.
+    user_count = conn.execute("SELECT COUNT(*) AS c FROM users").fetchone()["c"]
+    force = user_count == 0 or os.environ.get("WEB_FORCE_BOOTSTRAP_PASSWORDS", "0").strip().lower() in ("1", "true", "yes")
+
+    _upsert_user(conn, admin_username, admin_display, "Admin", admin_password, force_password=force)
+    if dev_username != admin_username:
+        _upsert_user(
+            conn,
+            dev_username,
+            "Developer",
+            "Developer",
+            dev_password,
+            password_alt=dev_password_alt,
+            force_password=force,
+        )
 
 
 def init_db() -> None:
     with db() as conn:
         conn.executescript(SCHEMA)
-        bootstrap_enabled = os.environ.get("WEB_BOOTSTRAP_USERS", "0").strip().lower() in ("1", "true", "yes")
-        if bootstrap_enabled:
-            admin_username = os.environ.get("WEB_ADMIN_USERNAME", "").strip()
-            admin_password = os.environ.get("WEB_ADMIN_PASSWORD", "")
-            if not admin_username or not admin_password:
-                raise RuntimeError(
-                    "WEB_BOOTSTRAP_USERS is enabled, but WEB_ADMIN_USERNAME and "
-                    "WEB_ADMIN_PASSWORD must both be configured"
-                )
-            _upsert_user(
-                conn,
-                admin_username,
-                os.environ.get("WEB_ADMIN_DISPLAY_NAME", "Account Administrator").strip() or "Account Administrator",
-                "Admin",
-                admin_password,
-            )
-            developer_username = os.environ.get("WEB_DEVELOPER_USERNAME", "").strip()
-            developer_password = os.environ.get("WEB_DEVELOPER_PASSWORD", "")
-            if developer_username and developer_password and developer_username != admin_username:
-                _upsert_user(conn, developer_username, "Developer", "Developer", developer_password)
-        conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES ('schema_version', '2')")
+        # Default ON so Light Cloud / first deploy has a working Admin login.
+        # Set WEB_BOOTSTRAP_USERS=0 to skip seeding entirely.
+        bootstrap_flag = os.environ.get("WEB_BOOTSTRAP_USERS", "1").strip().lower()
+        if bootstrap_flag not in ("0", "false", "no", "off"):
+            try:
+                _seed_default_accounts(conn)
+            except Exception as exc:
+                print(f"Bootstrap warning: {exc}")
+        conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES ('schema_version', '3')")
 
 
 def row_to_dict(row: sqlite3.Row | None) -> dict[str, Any] | None:
