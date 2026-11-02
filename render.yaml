@@ -16,6 +16,8 @@ services:
         sync: false
       - key: WEB_ADMIN_DISPLAY_NAME
         value: "Account Administrator"
+      - key: WEB_SESSION_SECRET
+        sync: false
       - key: WEB_DEVELOPER_USERNAME
         sync: false
       - key: WEB_DEVELOPER_PASSWORD
