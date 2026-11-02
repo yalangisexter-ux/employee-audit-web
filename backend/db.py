@@ -235,6 +235,8 @@ def init_db() -> None:
             if developer_username or developer_password:
                 if not developer_username or not developer_password:
                     raise RuntimeError("Set both WEB_DEVELOPER_USERNAME and WEB_DEVELOPER_PASSWORD, or leave both unset")
+                if developer_username == admin_username:
+                    raise RuntimeError("Administrator and developer usernames must be different")
                 _upsert_user(conn, developer_username, "Developer", "Developer", developer_password)
         conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES ('schema_version', '2')")
 
