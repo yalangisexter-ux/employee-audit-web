@@ -207,10 +207,21 @@ def _upsert_user(conn: sqlite3.Connection, username: str, display_name: str, rol
             (username, display_name, role, password_hash, now),
         )
     else:
-        conn.execute(
-            "UPDATE users SET display_name=?, role=?, password_hash=?, password_hash_alt=NULL, is_active=1 WHERE id=?",
-            (display_name, role, password_hash, row["id"]),
-        )
+        existing = conn.execute(
+            "SELECT password_hash FROM users WHERE id=?", (row["id"],)
+        ).fetchone()
+        # Do not rotate the password hash on every process start. Rehash only
+        # when the configured bootstrap password has actually changed.
+        if existing is not None and verify_password(password, existing["password_hash"]):
+            conn.execute(
+                "UPDATE users SET display_name=?, role=?, password_hash_alt=NULL, is_active=1 WHERE id=?",
+                (display_name, role, row["id"]),
+            )
+        else:
+            conn.execute(
+                "UPDATE users SET display_name=?, role=?, password_hash=?, password_hash_alt=NULL, is_active=1 WHERE id=?",
+                (display_name, role, password_hash, row["id"]),
+            )
 
 
 def init_db() -> None:
