@@ -508,6 +508,13 @@ def spa_root():
 def spa_fallback(full_path: str):
     if full_path.startswith("api/"):
         raise HTTPException(404, "API route not found")
+    candidate = (STATIC / full_path).resolve()
+    try:
+        candidate.relative_to(STATIC.resolve())
+    except ValueError:
+        raise HTTPException(404, "Not found")
+    if candidate.is_file():
+        return FileResponse(candidate)
     index = STATIC / "index.html"
     if index.exists():
         return FileResponse(index)
