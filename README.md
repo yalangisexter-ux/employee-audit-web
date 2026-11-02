@@ -19,20 +19,11 @@ The web SPA includes dashboard, employee/task/attendance workflows, operational 
 
 ## Security and first account
 
-There are **no default usernames or passwords** in the source code. Previous sample credentials have been removed; treat any credentials previously published in this repository as compromised and do not reuse them.
+The web application has its own independent database and account system. It does **not** import, migrate, or reuse Windows EXE users, passwords, or business records.
 
-For a hosted instance, set these environment variables in the hosting provider's secret/environment settings:
+On a brand-new empty web database, open the web URL and the application displays **Create your web administrator**. Create the first username and password there (minimum 12 characters). This one-time setup endpoint is disabled automatically after the first account is created. There are no built-in or default credentials.
 
-| Variable | Required | Description |
-|---|---:|---|
-| `WEB_BOOTSTRAP_USERS` | Yes | Set to `true` to provision the administrator from secrets |
-| `WEB_ADMIN_USERNAME` | Yes | Your chosen case-sensitive admin username |
-| `WEB_ADMIN_PASSWORD` | Yes | Unique password, minimum 12 characters |
-| `WEB_ADMIN_DISPLAY_NAME` | No | Display name |\n| `WEB_SESSION_SECRET` | Required for hosted deployments | Stable random secret (at least 32 characters) used to sign restart-safe login sessions |
-| `WEB_DEVELOPER_USERNAME` | No | Optional separate developer username |
-| `WEB_DEVELOPER_PASSWORD` | No | Optional separate developer password, minimum 12 characters |
-
-If developer credentials are configured, set both developer variables. On the first secure bootstrap, existing legacy seeded accounts are migrated to the configured credentials, alternate password hashes are cleared, and an unconfigured legacy Developer account is disabled. Later password changes are managed in Settings and are not overwritten on restart. To intentionally rotate credentials through hosting secrets, use the account password-change screen instead. Never commit secret values. Generate a stable session secret once with `python -c 'import secrets; print(secrets.token_urlsafe(48))'` and save it as `WEB_SESSION_SECRET` in Light Cloud environment secrets. Do not regenerate it during normal deploys. If the host uses ephemeral storage, this secret must be configured.
+After setup, sign in with the new web account. Use Settings to change your password; an administrator can reset another web user's password. Usernames are case-sensitive. Keep `WEB_SESSION_SECRET` stable across restarts (at least 32 characters) for hosted deployments. Generate it with `python -c 'import secrets; print(secrets.token_urlsafe(48))'` and store it as a hosting secret.
 
 ## Local run
 
@@ -40,8 +31,6 @@ If developer credentials are configured, set both developer variables. On the fi
 python -m venv .venv
 source .venv/bin/activate   # Windows: .venv\\Scripts\\activate
 pip install -r requirements.txt
-export WEB_BOOTSTRAP_USERS=true
-export WEB_ADMIN_USERNAME=Admin
 export WEB_ADMIN_PASSWORD='replace-with-a-unique-password'\nexport WEB_SESSION_SECRET="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
 uvicorn backend.main:app --reload --port 8000
 ```
