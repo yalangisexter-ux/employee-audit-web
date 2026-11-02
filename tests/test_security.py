@@ -15,11 +15,13 @@ class SecurityBootstrapTests(unittest.TestCase):
         os.environ.pop("WEB_ADMIN_PASSWORD", None)
         os.environ.pop("WEB_DEVELOPER_USERNAME", None)
         os.environ.pop("WEB_DEVELOPER_PASSWORD", None)
+        os.environ.pop("WEB_SESSION_SECRET", None)
 
     def tearDown(self):
         db.DB_PATH = self.original_path
         self.temp_dir.cleanup()
         os.environ.pop("WEB_BOOTSTRAP_USERS", None)
+        os.environ.pop("WEB_SESSION_SECRET", None)
 
     def test_no_default_users_are_created(self):
         os.environ["WEB_BOOTSTRAP_USERS"] = "false"
