@@ -472,8 +472,13 @@ def print_summary(user=Depends(require_user)):
         return {
             "employees": database.rows_to_list(conn.execute("SELECT id, name, role, status FROM employees ORDER BY name").fetchall()),
             "tasks": database.rows_to_list(conn.execute("SELECT id, title, assignee, status, due_date FROM tasks ORDER BY id DESC LIMIT 100").fetchall()),
-            "orders": database.rows_to_list(conn.execute("SELECT id, customer_name, item, amount, status, order_date FROM orders ORDER BY id DESC LIMIT 100").fetchall()),
-            "members": database.rows_to_list(conn.execute("SELECT id, name, plan, status FROM members ORDER BY name").fetchall()),
+            "attendance": database.rows_to_list(conn.execute("SELECT id, employee_name, work_date, status, check_in, check_out FROM attendance ORDER BY work_date DESC, employee_name LIMIT 500").fetchall()),
+            "products": database.rows_to_list(conn.execute("SELECT id, name, sku, category, stock, price FROM products ORDER BY name").fetchall()),
+            "services": database.rows_to_list(conn.execute("SELECT id, name, category, price, duration_min FROM services ORDER BY name").fetchall()),
+            "orders": database.rows_to_list(conn.execute("SELECT id, customer_name, item, quantity, amount, status, order_date FROM orders ORDER BY id DESC LIMIT 100").fetchall()),
+            "members": database.rows_to_list(conn.execute("SELECT id, name, phone, plan, status, start_date FROM members ORDER BY name").fetchall()),
+            "customers": database.rows_to_list(conn.execute("SELECT id, business_name, contact_name, phone, email, city, state, kind, status FROM customers ORDER BY business_name").fetchall()),
+            "activities": database.rows_to_list(conn.execute("SELECT id, title, category, employee_name, activity_date FROM activities ORDER BY activity_date DESC LIMIT 200").fetchall()),
             "generated_at": datetime.utcnow().isoformat() + "Z",
         }
 
@@ -485,6 +490,8 @@ def settings(user=Depends(require_user)):
 
 @app.get("/api/backup/database")
 def backup_database(user=Depends(require_user)):
+    if not (is_customer_admin(user) or is_developer(user)):
+        raise HTTPException(status_code=403, detail="Administrator permission required")
     path = database.DB_PATH
     if not path.exists():
         raise HTTPException(404, "Database file not found")
