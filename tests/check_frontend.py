@@ -57,10 +57,25 @@ def main():
             path = Path(tmp) / f"inline-{i}.js"
             path.write_text(source, encoding="utf-8")
             subprocess.run([node, "--check", str(path)], check=True)
-    for path in (STATIC / "cloud-sync.js",):
+    for path in (STATIC / "app.js", STATIC / "cloud-sync.js"):
         if path.exists():
             subprocess.run([node, "--check", str(path)], check=True)
-    print("Frontend assets and JavaScript syntax validated.")
+    wallpapers = [
+        "galaxy.svg", "lord_shiva.svg", "love_couples.svg",
+        "milky_way_waves.svg", "ocean_waves.svg",
+    ]
+    missing_wallpapers = [
+        name for name in wallpapers
+        if not (STATIC / "assets" / "wallpapers" / name).is_file()
+    ]
+    if missing_wallpapers:
+        raise SystemExit("Missing wallpaper artwork: " + ", ".join(missing_wallpapers))
+    app_js = (STATIC / "app.js").read_text(encoding="utf-8")
+    if "Try Admin / Shiva@01" in app_js:
+        raise SystemExit("Legacy sample login credentials must not appear in the web UI")
+    if "createFirstAdmin" not in app_js or "/api/auth/status" not in app_js:
+        raise SystemExit("Fresh-install administrator setup is not wired to the frontend")
+    print("Frontend assets, wallpaper artwork, fresh-install setup, and JavaScript syntax validated.")
 
 
 if __name__ == "__main__":
