@@ -86,3 +86,20 @@ html.theme-day .banner{background:linear-gradient(135deg,rgba(8,145,178,.12),rgb
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 select.theme-sel{width:auto;margin:0;padding:.35rem .5rem;font-size:.75rem}
+
+
+/* Desktop-parity wallpaper artwork: subtle enough to preserve readable glass panels. */
+body{isolation:isolate}
+body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;background-position:center;background-size:cover;background-repeat:no-repeat;opacity:.30;transform:scale(1.025);animation:wallpaperFloat 42s ease-in-out infinite alternate}
+body.wp-galaxy::before{background-image:url('/assets/wallpapers/galaxy.svg')}
+body.wp-shiva::before{background-image:url('/assets/wallpapers/lord_shiva.svg')}
+body.wp-love::before{background-image:url('/assets/wallpapers/love_couples.svg')}
+body.wp-milky::before{background-image:url('/assets/wallpapers/milky_way_waves.svg')}
+body.wp-ocean::before{background-image:url('/assets/wallpapers/ocean_waves.svg')}
+body.wp-aurora::before{background-image:radial-gradient(ellipse at 12% 18%,#0e7490 0%,transparent 42%),radial-gradient(ellipse at 85% 78%,#7c3aed 0%,transparent 38%)}
+body.wp-ember::before{background-image:radial-gradient(ellipse at 50% 0%,#7c2d12 0%,transparent 55%)}
+html.theme-day body::before{opacity:.12}
+html.theme-day .panel,html.theme-day .sidebar,html.theme-day .topbar,html.theme-day .card{backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);background:rgba(255,255,255,.78);border-color:rgba(15,23,42,.12);box-shadow:0 12px 32px rgba(15,23,42,.08)}
+html:not(.theme-day) .panel,html:not(.theme-day) .sidebar,html:not(.theme-day) .topbar{backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+@keyframes wallpaperFloat{from{background-position:48% 48%}to{background-position:52% 52%}}
+@media(prefers-reduced-motion:reduce){body::before{animation:none}}
