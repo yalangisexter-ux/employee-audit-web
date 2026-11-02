@@ -43,7 +43,10 @@ def _session_secret() -> bytes:
     # ephemeral filesystems, configure WEB_SESSION_SECRET in provider secrets.
     key_path = Path(database.DATA_DIR) / ".web_session_secret"
     try:
-        key_path.write_bytes(secrets.token_bytes(48))
+        # Exclusive creation prevents a new key from replacing the existing
+        # key on each login (which would invalidate the previous token).
+        with key_path.open("xb") as handle:
+            handle.write(secrets.token_bytes(48))
         try:
             key_path.chmod(0o600)
         except OSError:
