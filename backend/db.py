@@ -14,7 +14,7 @@ DATA_DIR = Path(os.environ.get("AUDIT_DATA_DIR") or Path(__file__).resolve().par
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / "employee_audit_web.db"
 
-PBKDF2_ITERATIONS = 120_000
+PBKDF2_ITERATIONS = 310_000
 
 
 def hash_password(password: str, salt: str | None = None) -> str:
@@ -193,42 +193,50 @@ CREATE TABLE IF NOT EXISTS meta (
 """
 
 
-def _upsert_user(conn: sqlite3.Connection, username: str, display_name: str, role: str, password: str, alt: str | None = None) -> None:
-    row = conn.execute(
-        "SELECT id, password_hash FROM users WHERE username = ? COLLATE BINARY", (username,)
-    ).fetchone()
-    ph = hash_password(password)
-    alt_hash = hash_password(alt) if alt else None
+def _upsert_user(conn: sqlite3.Connection, username: str, display_name: str, role: str, password: str) -> None:
+    if len(password) < 12:
+        raise RuntimeError(f"Password for {username} must be at least 12 characters")
     now = datetime.utcnow().isoformat()
+    row = conn.execute(
+        "SELECT id FROM users WHERE username = ? COLLATE BINARY", (username,)
+    ).fetchone()
+    password_hash = hash_password(password)
     if row is None:
         conn.execute(
-            "INSERT INTO users (username, display_name, role, password_hash, password_hash_alt, is_active, created_at) VALUES (?,?,?,?,?,1,?)",
-            (username, display_name, role, ph, alt_hash, now),
+            "INSERT INTO users (username, display_name, role, password_hash, password_hash_alt, is_active, created_at) VALUES (?,?,?,?,NULL,1,?)",
+            (username, display_name, role, password_hash, now),
+        )
+    else:
+        # Explicit deployment secrets rotate existing bootstrap credentials on restart.
+        conn.execute(
+            "UPDATE users SET display_name=?, role=?, password_hash=?, password_hash_alt=NULL, is_active=1 WHERE id=?",
+            (display_name, role, password_hash, row["id"]),
         )
 
 
 def init_db() -> None:
     with db() as conn:
         conn.executescript(SCHEMA)
-        if os.environ.get("WEB_BOOTSTRAP_USERS", "1").strip().lower() in ("1", "true", "yes"):
-            _upsert_user(conn, "Admin", "Taruna (Customer)", "Admin", "Shiva@01")
-            row = conn.execute(
-                "SELECT id FROM users WHERE username = ? COLLATE BINARY", ("admin",)
-            ).fetchone()
-            if row is None:
-                now = datetime.utcnow().isoformat()
-                conn.execute(
-                    "INSERT INTO users (username, display_name, role, password_hash, password_hash_alt, is_active, created_at) VALUES (?,?,?,?,?,1,?)",
-                    (
-                        "admin",
-                        "Developer",
-                        "Developer",
-                        hash_password("kiran123"),
-                        hash_password("Devlopershouse@1996#"),
-                        now,
-                    ),
-                )
-        conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES ('schema_version', '1')")
+        bootstrap_enabled = os.environ.get("WEB_BOOTSTRAP_USERS", "0").strip().lower() in ("1", "true", "yes")
+        if bootstrap_enabled:
+            admin_username = os.environ.get("WEB_ADMIN_USERNAME", "").strip()
+            admin_password = os.environ.get("WEB_ADMIN_PASSWORD", "")
+            if not admin_username or not admin_password:
+                raise RuntimeError("WEB_ADMIN_USERNAME and WEB_ADMIN_PASSWORD are required when WEB_BOOTSTRAP_USERS is enabled")
+            _upsert_user(
+                conn,
+                admin_username,
+                os.environ.get("WEB_ADMIN_DISPLAY_NAME", "Account Administrator").strip() or "Account Administrator",
+                "Admin",
+                admin_password,
+            )
+            developer_username = os.environ.get("WEB_DEVELOPER_USERNAME", "").strip()
+            developer_password = os.environ.get("WEB_DEVELOPER_PASSWORD", "")
+            if developer_username or developer_password:
+                if not developer_username or not developer_password:
+                    raise RuntimeError("Set both WEB_DEVELOPER_USERNAME and WEB_DEVELOPER_PASSWORD, or leave both unset")
+                _upsert_user(conn, developer_username, "Developer", "Developer", developer_password)
+        conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES ('schema_version', '2')")
 
 
 def row_to_dict(row: sqlite3.Row | None) -> dict[str, Any] | None:
