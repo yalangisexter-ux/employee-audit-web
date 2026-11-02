@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import Depends, FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -18,7 +17,6 @@ ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "static"
 
 app = FastAPI(title="Employee Audit Manager Web", version="2.0.0")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 
 @app.on_event("startup")
@@ -122,7 +120,7 @@ def health() -> dict[str, Any]:
         users = conn.execute("SELECT COUNT(*) c FROM users").fetchone()["c"]
         emps = conn.execute("SELECT COUNT(*) c FROM employees").fetchone()["c"]
         tasks = conn.execute("SELECT COUNT(*) c FROM tasks").fetchone()["c"]
-    return {"ok": True, "app": "employee-audit-web", "version": "2.0.0", "user_count": users, "employee_count": emps, "task_count": tasks, "db_path": str(database.DB_PATH)}
+    return {"ok": True, "app": "employee-audit-web", "version": "2.0.0", "user_count": users, "employee_count": emps, "task_count": tasks}
 
 
 @app.get("/api/auth/status")
@@ -399,7 +397,7 @@ def print_summary(user=Depends(require_user)):
 
 @app.get("/api/settings")
 def settings(user=Depends(require_user)):
-    return {"user": {"username": user["username"], "display_name": user["display_name"], "role": user["role"], "is_customer": is_customer_admin(user), "is_developer": is_developer(user)}, "db_path": str(database.DB_PATH), "data_dir": str(database.DATA_DIR), "app_version": "2.0.0", "notes": "Independent web app. Desktop EXE is unchanged."}
+    return {"user": {"username": user["username"], "display_name": user["display_name"], "role": user["role"], "is_customer": is_customer_admin(user), "is_developer": is_developer(user)}, "app_version": "2.0.1", "notes": "Independent web app. Desktop EXE is unchanged."}
 
 
 assets_dir = STATIC / "assets"
