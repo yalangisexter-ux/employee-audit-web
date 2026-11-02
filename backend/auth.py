@@ -69,10 +69,8 @@ def require_user(authorization: str | None = Header(default=None)) -> dict[str, 
 
 
 def is_customer_admin(user: dict[str, Any]) -> bool:
-    return str(user.get("username") or "") == "Admin"
+    return str(user.get("role") or "").strip().lower() in {"admin", "customer admin"}
 
 
 def is_developer(user: dict[str, Any]) -> bool:
-    un = str(user.get("username") or "")
-    role = str(user.get("role") or "").lower()
-    return un == "admin" or role == "developer"
+    return str(user.get("role") or "").strip().lower() == "developer"
