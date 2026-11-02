@@ -31,9 +31,6 @@ def authenticate(username: str, password: str) -> dict[str, Any] | None:
         return None
     if database.verify_password(password, user.get("password_hash")):
         return user
-    # Developer account may accept a second known password.
-    if database.verify_password(password, user.get("password_hash_alt")):
-        return user
     return None
 
 
@@ -41,10 +38,8 @@ def _session_secret() -> bytes:
     configured = os.environ.get("WEB_SESSION_SECRET", "").strip()
     if configured:
         if len(configured) < 32:
-            # Fall back to generated key rather than hard-failing login.
-            pass
-        else:
-            return configured.encode("utf-8")
+            raise RuntimeError("WEB_SESSION_SECRET must contain at least 32 characters.")
+        return configured.encode("utf-8")
 
     key_path = Path(database.DATA_DIR) / ".web_session_secret"
     try:
@@ -58,15 +53,18 @@ def _session_secret() -> bytes:
         pass
     except OSError:
         if not key_path.exists():
-            # Last-resort in-memory key so the process can still accept logins.
-            return hashlib.sha256(b"employee-audit-web-fallback-session").digest()
+            raise RuntimeError(
+                "Cannot persist session signing key. Configure a stable WEB_SESSION_SECRET."
+            )
     try:
         key = key_path.read_bytes()
         if len(key) >= 32:
             return key
     except OSError:
         pass
-    return hashlib.sha256(b"employee-audit-web-fallback-session").digest()
+    raise RuntimeError(
+        "Invalid or unavailable session signing key. Configure a stable WEB_SESSION_SECRET."
+    )
 
 
 def _b64(data: bytes) -> str:
