@@ -3,113 +3,97 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from fastapi import HTTPException
 from backend import db
 
 
-class SecurityBootstrapTests(unittest.TestCase):
+class FreshWebAccountTests(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.original_path = db.DB_PATH
         db.DB_PATH = Path(self.temp_dir.name) / "test.db"
-        os.environ.pop("WEB_ADMIN_USERNAME", None)
-        os.environ.pop("WEB_ADMIN_PASSWORD", None)
-        os.environ.pop("WEB_DEVELOPER_USERNAME", None)
-        os.environ.pop("WEB_DEVELOPER_PASSWORD", None)
-        os.environ.pop("WEB_SESSION_SECRET", None)
+        os.environ["WEB_SESSION_SECRET"] = "test-session-secret-that-is-at-least-32-characters"
+        os.environ.pop("WEB_BOOTSTRAP_USERS", None)
+        db.init_db()
 
     def tearDown(self):
         db.DB_PATH = self.original_path
         self.temp_dir.cleanup()
-        os.environ.pop("WEB_BOOTSTRAP_USERS", None)
         os.environ.pop("WEB_SESSION_SECRET", None)
 
-    def test_no_default_users_are_created(self):
-        os.environ["WEB_BOOTSTRAP_USERS"] = "false"
-        db.init_db()
+    def create_admin(self, username="test-admin", password="Initial-Password-123"):
+        from backend.main import FirstAdminSetupIn, first_admin_setup
+        result = first_admin_setup(FirstAdminSetupIn(
+            username=username, display_name="Test Administrator", password=password
+        ))
+        return result
+
+    def test_fresh_database_has_no_default_or_migrated_users(self):
         with db.db() as conn:
             count = conn.execute("SELECT COUNT(*) AS c FROM users").fetchone()["c"]
         self.assertEqual(count, 0)
 
-    def test_bootstrap_requires_secret_credentials(self):
-        os.environ["WEB_BOOTSTRAP_USERS"] = "true"
-        with self.assertRaises(RuntimeError):
-            db.init_db()
+    def test_first_admin_setup_creates_account_and_rejects_second_setup(self):
+        from backend.main import FirstAdminSetupIn, first_admin_setup
+        from backend import auth
+        result = self.create_admin()
+        self.assertTrue(result["ok"])
+        self.assertIsNotNone(auth.authenticate("test-admin", "Initial-Password-123"))
+        with self.assertRaises(HTTPException) as raised:
+            first_admin_setup(FirstAdminSetupIn(
+                username="another-admin", display_name="Second", password="Another-Password-123"
+            ))
+        self.assertEqual(raised.exception.status_code, 409)
 
+    def test_first_admin_setup_rejects_short_password(self):
+        from backend.main import FirstAdminSetupIn
+        with self.assertRaises(Exception):
+            FirstAdminSetupIn(username="admin-user", display_name="Admin", password="short")
 
     def test_password_change_updates_hash_and_invalidates_old_sessions(self):
         from backend import auth
         from backend.main import PasswordChangeIn, change_password
-
-        os.environ["WEB_BOOTSTRAP_USERS"] = "true"
-        os.environ["WEB_ADMIN_USERNAME"] = "test-admin"
-        os.environ["WEB_ADMIN_PASSWORD"] = "Initial-Password-123"
-        db.init_db()
+        self.create_admin()
         user = auth.authenticate("test-admin", "Initial-Password-123")
-        self.assertIsNotNone(user)
         old_token = auth.create_session(int(user["id"]))
-
         result = change_password(
-            PasswordChangeIn(
-                current_password="Initial-Password-123",
-                new_password="Replacement-Password-456",
-            ),
+            PasswordChangeIn(current_password="Initial-Password-123", new_password="Replacement-Password-456"),
             user,
         )
         self.assertTrue(result["ok"])
-        self.assertNotEqual(old_token, result["token"])
         self.assertIsNone(auth.session_user(old_token))
         self.assertIsNotNone(auth.session_user(result["token"]))
         self.assertIsNone(auth.authenticate("test-admin", "Initial-Password-123"))
         self.assertIsNotNone(auth.authenticate("test-admin", "Replacement-Password-456"))
 
     def test_password_change_rejects_wrong_current_password(self):
-        from fastapi import HTTPException
         from backend import auth
         from backend.main import PasswordChangeIn, change_password
-
-        os.environ["WEB_BOOTSTRAP_USERS"] = "true"
-        os.environ["WEB_ADMIN_USERNAME"] = "test-admin"
-        os.environ["WEB_ADMIN_PASSWORD"] = "Initial-Password-123"
-        db.init_db()
+        self.create_admin()
         user = auth.authenticate("test-admin", "Initial-Password-123")
         with self.assertRaises(HTTPException):
             change_password(
-                PasswordChangeIn(
-                    current_password="incorrect-password",
-                    new_password="Replacement-Password-456",
-                ),
+                PasswordChangeIn(current_password="incorrect-password", new_password="Replacement-Password-456"),
                 user,
             )
 
     def test_session_survives_database_session_table_cleanup(self):
         from backend import auth
-
-        os.environ["WEB_BOOTSTRAP_USERS"] = "true"
-        os.environ["WEB_ADMIN_USERNAME"] = "test-admin"
-        os.environ["WEB_ADMIN_PASSWORD"] = "Initial-Password-123"
-        os.environ["WEB_SESSION_SECRET"] = "test-session-secret-that-is-at-least-32-characters"
-        db.init_db()
+        self.create_admin()
         user = auth.authenticate("test-admin", "Initial-Password-123")
         token = auth.create_session(int(user["id"]))
-
-        # Stateless signed sessions remain valid even when old server-side
-        # session rows are absent after a process/container restart.
         with db.db() as conn:
             conn.execute("DELETE FROM sessions")
         self.assertIsNotNone(auth.session_user(token))
 
-    def test_bootstrap_does_not_rotate_password_hash_on_restart(self):
+    def test_restart_does_not_change_new_web_account_password(self):
         from backend import auth
-
-        os.environ["WEB_BOOTSTRAP_USERS"] = "true"
-        os.environ["WEB_ADMIN_USERNAME"] = "test-admin"
-        os.environ["WEB_ADMIN_PASSWORD"] = "Initial-Password-123"
-        os.environ["WEB_SESSION_SECRET"] = "test-session-secret-that-is-at-least-32-characters"
-        db.init_db()
-        user_before = auth.authenticate("test-admin", "Initial-Password-123")
-        token = auth.create_session(int(user_before["id"]))
+        self.create_admin()
+        user = auth.authenticate("test-admin", "Initial-Password-123")
+        token = auth.create_session(int(user["id"]))
         db.init_db()
         self.assertIsNotNone(auth.session_user(token))
+        self.assertIsNotNone(auth.authenticate("test-admin", "Initial-Password-123"))
 
     def test_password_hash_verification(self):
         hashed = db.hash_password("a-unique-long-password")
