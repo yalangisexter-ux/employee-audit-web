@@ -137,7 +137,7 @@ def is_customer_admin(user: dict[str, Any]) -> bool:
     if str(user.get("username") or "") == "Admin":
         return True
     role = str(user.get("role") or "").strip().lower()
-    return role in {"customer admin", "customer"}
+    return role in {"admin", "customer admin", "customer"}
 
 
 def is_developer(user: dict[str, Any]) -> bool:
