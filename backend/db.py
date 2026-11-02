@@ -267,11 +267,21 @@ def _seed_default_accounts(conn: sqlite3.Connection) -> None:
             conn, dev_username, "Developer", "Developer",
             dev_password, force_password=migrate_credentials,
         )
-    if migrate_credentials and not dev_username:
-        # Disable any legacy source-seeded developer account until explicitly reprovisioned.
+    if migrate_credentials:
+        # Disable source-seeded accounts whose usernames are not explicitly configured.
+        configured_names = [admin_username]
+        if dev_username:
+            configured_names.append(dev_username)
+        placeholders = ",".join("?" for _ in configured_names)
         conn.execute(
-            "UPDATE users SET is_active=0, password_hash_alt=NULL WHERE role='Developer'"
+            f"UPDATE users SET is_active=0, password_hash_alt=NULL "
+            f"WHERE username IN ('Admin','admin') AND username NOT IN ({placeholders})",
+            tuple(configured_names),
         )
+        if not dev_username:
+            conn.execute(
+                "UPDATE users SET is_active=0, password_hash_alt=NULL WHERE role='Developer'"
+            )
     conn.execute("UPDATE users SET password_hash_alt=NULL WHERE password_hash_alt IS NOT NULL")
     conn.execute(
         "INSERT OR REPLACE INTO meta(key, value) VALUES ('secure_bootstrap_v1', '1')"
