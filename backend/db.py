@@ -218,25 +218,24 @@ def init_db() -> None:
         conn.executescript(SCHEMA)
         bootstrap_enabled = os.environ.get("WEB_BOOTSTRAP_USERS", "0").strip().lower() in ("1", "true", "yes")
         if bootstrap_enabled:
-            try:
-                admin_username = os.environ.get("WEB_ADMIN_USERNAME", "").strip()
-                admin_password = os.environ.get("WEB_ADMIN_PASSWORD", "")
-                if not admin_username or not admin_password:
-                    print("WEB_BOOTSTRAP_USERS is set but WEB_ADMIN_USERNAME/WEB_ADMIN_PASSWORD are missing — skipping bootstrap")
-                else:
-                    _upsert_user(
-                        conn,
-                        admin_username,
-                        os.environ.get("WEB_ADMIN_DISPLAY_NAME", "Account Administrator").strip() or "Account Administrator",
-                        "Admin",
-                        admin_password,
-                    )
-                    developer_username = os.environ.get("WEB_DEVELOPER_USERNAME", "").strip()
-                    developer_password = os.environ.get("WEB_DEVELOPER_PASSWORD", "")
-                    if developer_username and developer_password and developer_username != admin_username:
-                        _upsert_user(conn, developer_username, "Developer", "Developer", developer_password)
-            except Exception as exc:
-                print(f"Bootstrap warning: {exc}")
+            admin_username = os.environ.get("WEB_ADMIN_USERNAME", "").strip()
+            admin_password = os.environ.get("WEB_ADMIN_PASSWORD", "")
+            if not admin_username or not admin_password:
+                raise RuntimeError(
+                    "WEB_BOOTSTRAP_USERS is enabled, but WEB_ADMIN_USERNAME and "
+                    "WEB_ADMIN_PASSWORD must both be configured"
+                )
+            _upsert_user(
+                conn,
+                admin_username,
+                os.environ.get("WEB_ADMIN_DISPLAY_NAME", "Account Administrator").strip() or "Account Administrator",
+                "Admin",
+                admin_password,
+            )
+            developer_username = os.environ.get("WEB_DEVELOPER_USERNAME", "").strip()
+            developer_password = os.environ.get("WEB_DEVELOPER_PASSWORD", "")
+            if developer_username and developer_password and developer_username != admin_username:
+                _upsert_user(conn, developer_username, "Developer", "Developer", developer_password)
         conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES ('schema_version', '2')")
 
 
