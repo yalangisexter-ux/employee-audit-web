@@ -12,7 +12,7 @@ from typing import Any, Iterator
 
 DATA_DIR = Path(os.environ.get("AUDIT_DATA_DIR") or Path(__file__).resolve().parent.parent / "data")
 DATA_DIR.mkdir(parents=True, exist_ok=True)
-DB_PATH = DATA_DIR / "employee_audit_web.db"
+DB_PATH = DATA_DIR / "employee_audit_web_v2.db"
 
 PBKDF2_ITERATIONS = 310_000
 
