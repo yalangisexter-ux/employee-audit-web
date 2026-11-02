@@ -12,11 +12,13 @@ from pydantic import BaseModel, Field
 
 from . import db as database
 from .auth import authenticate, create_session, is_customer_admin, is_developer, require_user
+from .sync_import import router as sync_router
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "static"
 
-app = FastAPI(title="Employee Audit Manager Web", version="2.1.0")
+app = FastAPI(title="Employee Audit Manager Web", version="2.2.0")
+app.include_router(sync_router)
 
 
 @app.on_event("startup")
