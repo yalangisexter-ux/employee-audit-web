@@ -1,14 +1,15 @@
 """Import employees/tasks/attendance from encrypted customer cloud snapshots."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from . import db as database
-from .auth import require_user
+from .auth import is_customer_admin, is_developer, require_user
 
 router = APIRouter()
 
@@ -22,10 +23,26 @@ class SyncImportIn(BaseModel):
 
 @router.post("/api/sync/import")
 def sync_import(body: SyncImportIn, user=Depends(require_user)):
-    now = datetime.utcnow().isoformat()
+    if not (is_customer_admin(user) or is_developer(user)):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="Administrator permission required for Cloud Sync import")
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     counts = {"employees": 0, "tasks": 0, "attendance": 0}
     with database.db() as conn:
         if body.clear_existing:
+            # Create a consistent SQLite backup before any destructive replacement.
+            backup_dir = Path(database.DATA_DIR) / "backups"
+            backup_dir.mkdir(parents=True, exist_ok=True)
+            backup_path = backup_dir / ("pre-sync-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ") + ".db")
+            target = database.sqlite3.connect(str(backup_path))
+            try:
+                conn.backup(target)
+            finally:
+                target.close()
+            try:
+                backup_path.chmod(0o600)
+            except OSError:
+                pass
             conn.execute("DELETE FROM attendance")
             conn.execute("DELETE FROM tasks")
             conn.execute("DELETE FROM employees")
