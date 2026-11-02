@@ -133,14 +133,10 @@ def require_user(authorization: str | None = Header(default=None)) -> dict[str, 
 
 
 def is_customer_admin(user: dict[str, Any]) -> bool:
-    # Exact username Admin is the customer path.
-    if str(user.get("username") or "") == "Admin":
-        return True
+    # Permissions are role-based; usernames never grant elevated access.
     role = str(user.get("role") or "").strip().lower()
     return role in {"admin", "customer admin", "customer"}
 
 
 def is_developer(user: dict[str, Any]) -> bool:
-    if str(user.get("username") or "") == "admin":
-        return True
     return str(user.get("role") or "").strip().lower() == "developer"
