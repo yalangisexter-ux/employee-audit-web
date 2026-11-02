@@ -29,6 +29,11 @@ class LoginIn(BaseModel):
     password: str
 
 
+class PasswordChangeIn(BaseModel):
+    current_password: str = Field(min_length=1)
+    new_password: str = Field(min_length=12, max_length=256)
+
+
 class EmployeeIn(BaseModel):
     name: str
     role: str = ""
@@ -134,6 +139,23 @@ def login(body: LoginIn) -> dict[str, Any]:
         raise HTTPException(status_code=401, detail="Invalid username or password")
     token = create_session(int(user["id"]))
     return {"token": token, "user": {"id": user["id"], "username": user["username"], "display_name": user["display_name"], "role": user["role"], "is_customer": is_customer_admin(user), "is_developer": is_developer(user)}}
+
+
+@app.post("/api/auth/change-password")
+def change_password(body: PasswordChangeIn, user=Depends(require_user)) -> dict[str, Any]:
+    if not database.verify_password(body.current_password, user["password_hash"]):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    if database.verify_password(body.new_password, user["password_hash"]):
+        raise HTTPException(status_code=400, detail="New password must be different from the current password")
+    with database.db() as conn:
+        conn.execute(
+            "UPDATE users SET password_hash=?, password_hash_alt=NULL WHERE id=?",
+            (database.hash_password(body.new_password), user["id"]),
+        )
+        # Invalidate all existing sessions after a credential change.
+        conn.execute("DELETE FROM sessions WHERE user_id=?", (user["id"],))
+    token = create_session(int(user["id"]))
+    return {"ok": True, "message": "Password updated successfully", "token": token}
 
 
 @app.get("/api/auth/me")
