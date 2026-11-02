@@ -16,12 +16,7 @@ DB_PATH = DATA_DIR / "employee_audit_web.db"
 
 PBKDF2_ITERATIONS = 310_000
 
-# Predefined production bootstrap accounts (case-sensitive usernames).
-DEFAULT_ADMIN_USERNAME = "Admin"
-DEFAULT_ADMIN_PASSWORD = "Shiva@01"
-DEFAULT_DEV_USERNAME = "admin"
-DEFAULT_DEV_PASSWORD = "kiran123"
-DEFAULT_DEV_PASSWORD_ALT = "Devlopershouse@1996#"
+# No credentials are embedded in source. Provision accounts with environment secrets.
 
 
 def hash_password(password: str, salt: str | None = None) -> str:
@@ -238,45 +233,46 @@ def _upsert_user(
 
 
 def _seed_default_accounts(conn: sqlite3.Connection) -> None:
-    """Ensure the known Admin/admin accounts exist for first login."""
-    # Env overrides still supported for hosted secrets.
-    admin_username = os.environ.get("WEB_ADMIN_USERNAME", DEFAULT_ADMIN_USERNAME).strip() or DEFAULT_ADMIN_USERNAME
-    admin_password = os.environ.get("WEB_ADMIN_PASSWORD", DEFAULT_ADMIN_PASSWORD) or DEFAULT_ADMIN_PASSWORD
-    admin_display = os.environ.get("WEB_ADMIN_DISPLAY_NAME", "Taruna (Customer)").strip() or "Taruna (Customer)"
-
-    dev_username = os.environ.get("WEB_DEVELOPER_USERNAME", DEFAULT_DEV_USERNAME).strip() or DEFAULT_DEV_USERNAME
-    dev_password = os.environ.get("WEB_DEVELOPER_PASSWORD", DEFAULT_DEV_PASSWORD) or DEFAULT_DEV_PASSWORD
-    dev_password_alt = os.environ.get("WEB_DEVELOPER_PASSWORD_ALT", DEFAULT_DEV_PASSWORD_ALT) or DEFAULT_DEV_PASSWORD_ALT
-
-    # Always ensure predefined accounts exist. force_password only when no users yet
-    # or WEB_FORCE_BOOTSTRAP_PASSWORDS=1 so restarts do not reset operator changes.
-    user_count = conn.execute("SELECT COUNT(*) AS c FROM users").fetchone()["c"]
-    force = user_count == 0 or os.environ.get("WEB_FORCE_BOOTSTRAP_PASSWORDS", "0").strip().lower() in ("1", "true", "yes")
-
-    _upsert_user(conn, admin_username, admin_display, "Admin", admin_password, force_password=force)
-    if dev_username != admin_username:
-        _upsert_user(
-            conn,
-            dev_username,
-            "Developer",
-            "Developer",
-            dev_password,
-            password_alt=dev_password_alt,
-            force_password=force,
+    """Provision the initial administrator only from explicitly configured secrets."""
+    admin_username = os.environ.get("WEB_ADMIN_USERNAME", "").strip()
+    admin_password = os.environ.get("WEB_ADMIN_PASSWORD", "")
+    if not admin_username or not admin_password:
+        raise RuntimeError(
+            "WEB_BOOTSTRAP_USERS is enabled but WEB_ADMIN_USERNAME and "
+            "WEB_ADMIN_PASSWORD are required. Configure both as hosting secrets."
         )
+    if len(admin_password) < 12:
+        raise RuntimeError("WEB_ADMIN_PASSWORD must contain at least 12 characters.")
 
+    admin_display = os.environ.get("WEB_ADMIN_DISPLAY_NAME", "Account Administrator").strip()
+    _upsert_user(
+        conn, admin_username, admin_display or "Account Administrator",
+        "Admin", admin_password, force_password=False,
+    )
+
+    dev_username = os.environ.get("WEB_DEVELOPER_USERNAME", "").strip()
+    dev_password = os.environ.get("WEB_DEVELOPER_PASSWORD", "")
+    if bool(dev_username) != bool(dev_password):
+        raise RuntimeError(
+            "Configure both WEB_DEVELOPER_USERNAME and WEB_DEVELOPER_PASSWORD, or neither."
+        )
+    if dev_username:
+        if dev_username == admin_username:
+            raise RuntimeError("Developer username must differ from administrator username.")
+        if len(dev_password) < 12:
+            raise RuntimeError("WEB_DEVELOPER_PASSWORD must contain at least 12 characters.")
+        _upsert_user(
+            conn, dev_username, "Developer", "Developer",
+            dev_password, force_password=False,
+        )
 
 def init_db() -> None:
     with db() as conn:
         conn.executescript(SCHEMA)
-        # Default ON so Light Cloud / first deploy has a working Admin login.
-        # Set WEB_BOOTSTRAP_USERS=0 to skip seeding entirely.
-        bootstrap_flag = os.environ.get("WEB_BOOTSTRAP_USERS", "1").strip().lower()
-        if bootstrap_flag not in ("0", "false", "no", "off"):
-            try:
-                _seed_default_accounts(conn)
-            except Exception as exc:
-                print(f"Bootstrap warning: {exc}")
+        # Provision only when explicitly enabled; missing secrets fail startup.
+        bootstrap_flag = os.environ.get("WEB_BOOTSTRAP_USERS", "false").strip().lower()
+        if bootstrap_flag in ("1", "true", "yes", "on"):
+            _seed_default_accounts(conn)
         conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES ('schema_version', '3')")
 
 
