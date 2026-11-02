@@ -452,6 +452,11 @@ def print_summary(user=Depends(require_user)):
             "tasks": database.rows_to_list(conn.execute("SELECT id, title, assignee, status, due_date FROM tasks ORDER BY id DESC LIMIT 100").fetchall()),
             "orders": database.rows_to_list(conn.execute("SELECT id, customer_name, item, amount, status, order_date FROM orders ORDER BY id DESC LIMIT 100").fetchall()),
             "members": database.rows_to_list(conn.execute("SELECT id, name, plan, status FROM members ORDER BY name").fetchall()),
+            "attendance": database.rows_to_list(conn.execute("SELECT id, employee_name, work_date, status, check_in, check_out FROM attendance ORDER BY work_date DESC, employee_name LIMIT 500").fetchall()),
+            "products": database.rows_to_list(conn.execute("SELECT id, name, sku, category, stock, price FROM products ORDER BY name").fetchall()),
+            "services": database.rows_to_list(conn.execute("SELECT id, name, category, price, duration_min FROM services ORDER BY name").fetchall()),
+            "customers": database.rows_to_list(conn.execute("SELECT id, business_name, contact_name, phone, city, kind, status FROM customers ORDER BY business_name").fetchall()),
+            "activities": database.rows_to_list(conn.execute("SELECT id, title, category, employee_name, activity_date FROM activities ORDER BY activity_date DESC LIMIT 500").fetchall()),
             "generated_at": datetime.utcnow().isoformat() + "Z",
         }
 
