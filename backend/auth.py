@@ -25,9 +25,6 @@ def authenticate(username: str, password: str) -> dict[str, Any] | None:
         return None
     if database.verify_password(password, user["password_hash"]):
         return user
-    alt = user.get("password_hash_alt")
-    if alt and database.verify_password(password, alt):
-        return user
     return None
 
 
